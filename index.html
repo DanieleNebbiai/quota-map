@@ -1,15 +1,64 @@
 <!DOCTYPE html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover"><title>Quota · Mappa altimetrica V6 con borghi</title><style>
 *{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;font:14px system-ui,sans-serif;background:#d9e5df}#map{position:absolute;inset:0;width:100%;height:100%;touch-action:none}#top{position:absolute;top:calc(12px + env(safe-area-inset-top));left:12px;right:12px;display:flex;align-items:center;justify-content:space-between;z-index:2;background:#12312eea;border-radius:13px;padding:10px 12px;color:#fff;box-shadow:0 4px 18px #1234}#top b{font-size:18px}button,select{font:inherit;cursor:pointer}button{border:1px solid #456d63;border-radius:9px;background:#275047;color:#fff;padding:10px 12px}#zoom{position:absolute;right:12px;top:87px;display:flex;flex-direction:column;gap:8px}#zoom button{font-size:24px;min-width:45px}#info{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 12px);left:10px;right:10px;background:#14342ee8;color:white;border-radius:11px;padding:10px 12px;font-size:12px;line-height:1.5;pointer-events:none}#panel{display:none;position:absolute;z-index:5;bottom:calc(env(safe-area-inset-bottom) + 8px);left:8px;right:8px;background:#12312f;color:white;border-radius:16px;padding:16px;max-height:75dvh;overflow:auto;box-shadow:0 8px 40px #0005}#panel.show{display:block}#panel h3{margin:0 0 14px;font-size:17px}#panel label{display:block;font-size:12px;color:#c3dfd5;margin:13px 0 7px}#panel input[type=range]{width:100%;accent-color:#5ce3ab}#panel select{background:#29544a;color:white;padding:10px;width:100%;border:1px solid #5b8878;border-radius:8px}#panel .big{font-size:29px;font-weight:800}#panel .header{display:flex;justify-content:space-between;align-items:center}#legend{position:absolute;bottom:75px;left:12px;font-size:12px;background:#ffffffd8;color:#233d35;border-radius:8px;padding:8px 10px}#legend i{display:inline-block;width:12px;height:12px;background:#ffffff;border-radius:3px;vertical-align:middle;margin-right:5px}#legend i.gray{background:#565d5b}#attrib{position:absolute;bottom:0;right:0;color:#506a61;font-size:9px;background:#fffb;padding:2px 4px}
 </style></head><body>
-<canvas id="map"></canvas><header id="top"><b>△ Quota <span style="color:#b5d5c8;font-size:12px">· Toscana</span></b><button id="open">☰ Filtri · <span id="brief">800 m</span></button></header><div id="zoom"><button id="plus">+</button><button id="minus">−</button></div><div id="legend"><i></i> Visibile <span style="margin-left:10px"><i class="gray"></i> Oscurata 80%</span></div><div id="info">Avvio…</div><div id="attrib">© OpenStreetMap · CARTO · Elevation Mapzen/AWS</div>
+<canvas id="map"></canvas><header id="top"><b>△ Quota <span style="color:#b5d5c8;font-size:12px">· Toscana</span></b><button id="open">☰ Filtri · <span id="brief">800 m</span></button></header><div id="zoom"><button id="plus">+</button><button id="minus">−</button></div><div id="legend"><i></i> Visibile <span style="margin-left:10px"><i class="gray"></i> Oscurata 80%</span></div><div id="info">Avvio…</div><div id="attrib">© OpenStreetMap · OpenTopoMap (CC BY-SA) · CARTO · Mapzen/AWS</div>
 <section id="panel"><div class="header"><h3>Filtro altitudine</h3><button id="close">✕</button></div><div class="big"><span id="value">800</span> m</div><input id="min" type="range" min="0" max="2300" step="50" value="800"></section>
 <script>
-(()=>{'use strict';const $=id=>document.getElementById(id),cv=$('map'),ctx=cv.getContext('2d',{alpha:false}),info=$('info');let lat=43.82,lon=11.35,z=9,viewZoom=9,threshold=800,W=0,H=0,dpr=1,cache=new Map(),gen=0,sharpTimer=null,drag=false,moved=false,lastTouch=null,pinchDistance=0;const S=256,MAXCACHE=650;const rad=Math.PI/180;function lonX(v){return(v+180)/360*Math.pow(2,z)*S}function latY(v){let a=Math.log(Math.tan(Math.PI/4+v*rad/2));return(1-a/Math.PI)/2*Math.pow(2,z)*S}function xLon(v){return v/(Math.pow(2,z)*S)*360-180}function yLat(v){return (2*Math.atan(Math.exp(Math.PI*(1-2*v/(Math.pow(2,z)*S))))-Math.PI/2)/rad}function say(s){info.textContent=s}function resize(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);render()}function fetchTile(kind,x,y){const n=2**z;if(y<0||y>=n)return null;const tileX=((x%n)+n)%n,k=`${kind}/${z}/${tileX}/${y}`;if(cache.has(k))return cache.get(k);const rec={status:'loading',img:null};cache.set(k,rec);if(cache.size>MAXCACHE){for(const key of cache.keys()){if(cache.size<=MAXCACHE)break;cache.delete(key)}}const img=new Image();img.crossOrigin='anonymous';img.onload=()=>{try{if(kind==='e'){let can=document.createElement('canvas');can.width=can.height=S;let c=can.getContext('2d',{willReadFrequently:true});c.drawImage(img,0,0);rec.pixels=c.getImageData(0,0,S,S).data;}else rec.img=img;rec.status='ready';render()}catch(e){rec.status='error';render()}};img.onerror=()=>{rec.status='error';render()};img.src=kind==='e'?`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${tileX}/${y}.png`:kind==='l'?`https://a.basemaps.cartocdn.com/light_only_labels/${z}/${tileX}/${y}.png`:`https://tile.openstreetmap.org/${z}/${tileX}/${y}.png`;return rec}
+(()=>{'use strict';const $=id=>document.getElementById(id),cv=$('map'),ctx=cv.getContext('2d',{alpha:false}),info=$('info');let lat=43.82,lon=11.35,z=9,viewZoom=9,threshold=800,W=0,H=0,dpr=1,cache=new Map(),gen=0,sharpTimer=null,drag=false,moved=false,lastTouch=null,pinchDistance=0;const S=256,MAXCACHE=650;const rad=Math.PI/180;function lonX(v){return(v+180)/360*Math.pow(2,z)*S}function latY(v){let a=Math.log(Math.tan(Math.PI/4+v*rad/2));return(1-a/Math.PI)/2*Math.pow(2,z)*S}function xLon(v){return v/(Math.pow(2,z)*S)*360-180}function yLat(v){return (2*Math.atan(Math.exp(Math.PI*(1-2*v/(Math.pow(2,z)*S))))-Math.PI/2)/rad}function say(s){info.textContent=s}function resize(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);render()}function fetchTile(kind,x,y){const n=2**z;if(y<0||y>=n)return null;const tileX=((x%n)+n)%n,k=`${kind}/${z}/${tileX}/${y}`;if(cache.has(k))return cache.get(k);const rec={status:'loading',img:null};cache.set(k,rec);if(cache.size>MAXCACHE){for(const key of cache.keys()){if(cache.size<=MAXCACHE)break;cache.delete(key)}}const img=new Image();img.crossOrigin='anonymous';img.onload=()=>{try{if(kind==='e'){let can=document.createElement('canvas');can.width=can.height=S;let c=can.getContext('2d',{willReadFrequently:true});c.drawImage(img,0,0);rec.pixels=c.getImageData(0,0,S,S).data;}else rec.img=img;rec.status='ready';render()}catch(e){rec.status='error';render()}};img.onerror=()=>{if(kind==='b'&&!rec.fallback){rec.fallback=true;img.src=`https://tile.openstreetmap.org/${z}/${tileX}/${y}.png`;return;}rec.status='error';render()};img.src=kind==='e'?`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${tileX}/${y}.png`:kind==='l'?`https://a.basemaps.cartocdn.com/light_only_labels/${z}/${tileX}/${y}.png`:`https://a.tile.opentopomap.org/${z}/${tileX}/${y}.png`;return rec}
 function overlay(rec){if(!rec.pixels)return null;const sig=`${threshold}`;if(rec.overlay&&rec.sig===sig)return rec.overlay;const c=document.createElement('canvas');c.width=c.height=S;let cx=c.getContext('2d');let image=cx.createImageData(S,S),p=rec.pixels,d=image.data;for(let i=0;i<p.length;i+=4){const v=p[i]*256+p[i+1]+p[i+2]/256-32768;const keep=v>=threshold;d[i]=80;d[i+1]=87;d[i+2]=86;d[i+3]=keep?0:204;}cx.putImageData(image,0,0);rec.overlay=c;rec.sig=sig;return c}
+
+const namedPlaces={entries:[],lastKey:'',timer:null,controller:null};
+function schedulePlaceLoad(){
+ clearTimeout(namedPlaces.timer);
+ namedPlaces.timer=setTimeout(loadNamedPlaces,900);
+}
+async function loadNamedPlaces(){
+ if(viewZoom<8||W<=0||H<=0)return;
+ const scale=2**(viewZoom-z),mx=lonX(lon),my=latY(lat);
+ const a=yLat(my+H/(2*scale)),b=xLon(mx-W/(2*scale)),c=yLat(my-H/(2*scale)),d=xLon(mx+W/(2*scale));
+ if((c-a)*(d-b)>1.5)return;
+ const bbox=[a,b,c,d].map(x=>x.toFixed(3)).join(',');
+ if(namedPlaces.lastKey===bbox)return;
+ const q='[out:json][timeout:15];node["place"~"^(city|town|village|hamlet)$"]["name"]('+bbox+');out body;';
+ try{
+ if(namedPlaces.controller)namedPlaces.controller.abort();
+ const controller=new AbortController();namedPlaces.controller=controller;
+ const timeout=setTimeout(()=>controller.abort(),13000);
+ let response;
+ try{response=await fetch('https://overpass.kumi.systems/api/interpreter?data='+encodeURIComponent(q),{signal:controller.signal});}finally{clearTimeout(timeout)}
+ if(!response.ok)throw new Error('HTTP '+response.status);
+ const data=await response.json();
+ namedPlaces.entries=(data.elements||[]).filter(x=>x?.tags?.name&&Number.isFinite(x.lon)&&Number.isFinite(x.lat));
+ namedPlaces.lastKey=bbox;
+ render();
+ }catch(err){/* La mappa resta sempre visibile se il servizio dei nomi non risponde. */}
+}
+function drawNamedPlaces(){
+ const scale=2**(viewZoom-z),mx=lonX(lon),my=latY(lat);
+ const entries=namedPlaces.entries.slice().sort((a,b)=>(['city','town','village','hamlet'].indexOf(a.tags.place))-(['city','town','village','hamlet'].indexOf(b.tags.place)));
+ const used=[];
+ ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
+ for(const p of entries){
+ const type=p.tags.place;
+ if(type==='hamlet'&&viewZoom<9.4)continue;
+ const x=(lonX(p.lon)-mx)*scale+W/2,y=(latY(p.lat)-my)*scale+H/2;
+ if(x<15||x>W-15||y<75||y>H-35)continue;
+ const label=p.tags['name:it']||p.tags.name;
+ const size=type==='city'?15:type==='town'?14:type==='village'?12:11;
+ ctx.font=(type==='city'||type==='town'?'700 ':'600 ')+size+'px system-ui,sans-serif';
+ const width=ctx.measureText(label).width;
+ if(used.some(r=>Math.abs(r.x-x)<(r.width+width)/2+8&&Math.abs(r.y-y)<17))continue;
+ used.push({x,y,width});
+ ctx.lineWidth=4;ctx.strokeStyle='rgba(255,255,255,.98)';ctx.fillStyle='#1b3d32';
+ ctx.strokeText(label,x,y);ctx.fillText(label,x,y);
+ }
+}
+
 function render(){if(!W)return;ctx.fillStyle='#dce8e3';ctx.fillRect(0,0,W,H);const scale=2**(viewZoom-z),midx=lonX(lon),midy=latY(lat),halfW=W/(2*scale),halfH=H/(2*scale),startX=Math.floor((midx-halfW)/S),endX=Math.floor((midx+halfW)/S),startY=Math.floor((midy-halfH)/S),endY=Math.floor((midy+halfH)/S);let ok=0,loading=0,error=0;for(let y=startY;y<=endY;y++)for(let x=startX;x<=endX;x++){const sx=(x*S-midx)*scale+W/2,sy=(y*S-midy)*scale+H/2,drawSize=S*scale;const b=fetchTile('b',x,y),e=fetchTile('e',x,y),l=fetchTile('l',x,y);if(b?.status==='ready')ctx.drawImage(b.img,sx,sy,drawSize,drawSize);else{ctx.fillStyle='#d0ddd7';ctx.fillRect(sx,sy,drawSize,drawSize)}if(e?.status==='ready'){const ov=overlay(e);if(ov)ctx.drawImage(ov,sx,sy,drawSize,drawSize);ok++}if(e?.status==='loading'||b?.status==='loading'||l?.status==='loading')loading++;if(e?.status==='error'||b?.status==='error')error++}// Render the labels in a separate pass ABOVE the gray exclusion mask.
 for(let y=startY;y<=endY;y++)for(let x=startX;x<=endX;x++){const sx=(x*S-midx)*scale+W/2,sy=(y*S-midy)*scale+H/2,l=fetchTile('l',x,y);if(l?.status==='ready')ctx.drawImage(l.img,sx,sy,S*scale,S*scale)}
+drawNamedPlaces();
 if(ok)say(`Filtro: sopra ${threshold} m · Zoom ${viewZoom.toFixed(1)} · qualità ${z} · ${loading?'caricamento dettagli…':'dettagli caricati'}`);else if(error)say('Errore nel caricamento dei dati altimetrici. Controlla connessione e permessi di Brave per i file locali.');else say('Caricamento cartografia e altitudini…');}
-function pan(dx,dy){let scale=2**(viewZoom-z),x=lonX(lon)-dx/scale,y=latY(lat)-dy/scale;lon=xLon(x);lat=Math.max(-85,Math.min(85,yLat(y)));render()}
+function pan(dx,dy){let scale=2**(viewZoom-z),x=lonX(lon)-dx/scale,y=latY(lat)-dy/scale;lon=xLon(x);lat=Math.max(-85,Math.min(85,yLat(y)));render();schedulePlaceLoad()}
 function sharpen(){
   // A zoom starts by scaling currently loaded tiles (responsive touch feedback).
   // At the end of the gesture, switch the tile zoom so the browser downloads
@@ -17,7 +66,7 @@ function sharpen(){
   const newZ=Math.max(7,Math.min(15,Math.floor(viewZoom)));
   if(newZ!==z){z=newZ;render()}
 }
-function scheduleSharpen(delay=160){
+function scheduleSharpen(delay=160){schedulePlaceLoad();
   clearTimeout(sharpTimer);
   sharpTimer=setTimeout(sharpen,delay);
 }
@@ -27,6 +76,6 @@ cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);activePo
 cv.addEventListener('pointermove',e=>{if(!activePointers.has(e.pointerId))return;let previous=activePointers.get(e.pointerId);activePointers.set(e.pointerId,[e.clientX,e.clientY]);if(activePointers.size===1){pan(e.clientX-previous[0],e.clientY-previous[1]);return}if(activePointers.size===2){let ps=[...activePointers.values()],dist=Math.hypot(ps[0][0]-ps[1][0],ps[0][1]-ps[1][1]);if(prevPinch>0){viewZoom=Math.max(7,Math.min(15,viewZoom+Math.log2(dist/prevPinch)));render();scheduleSharpen(190)}prevPinch=dist}});
 for(const name of ['pointerup','pointercancel'])cv.addEventListener(name,e=>{activePointers.delete(e.pointerId);prevPinch=0;scheduleSharpen(70)});
 cv.addEventListener('wheel',e=>{e.preventDefault();zoomTo(e.deltaY<0?0.25:-0.25)},{passive:false});$('plus').onclick=()=>zoomTo(0.5);$('minus').onclick=()=>zoomTo(-0.5);
-function update(){threshold=+$('min').value;$('value').textContent=threshold;$('brief').textContent=threshold+' m';render()}$('min').oninput=update;$('open').onclick=()=>$('panel').classList.add('show');$('close').onclick=()=>$('panel').classList.remove('show');addEventListener('resize',resize);resize();
+function update(){threshold=+$('min').value;$('value').textContent=threshold;$('brief').textContent=threshold+' m';render()}$('min').oninput=update;$('open').onclick=()=>$('panel').classList.add('show');$('close').onclick=()=>$('panel').classList.remove('show');addEventListener('resize',resize);resize();schedulePlaceLoad();
 })();
 </script></body></html>
